@@ -1,9 +1,35 @@
+# 3.3 ロボットの観測
+
+import numpy as np
 import matplotlib.pyplot as plt
 import math
 import matplotlib.patches as patches
-import numpy as np
-
 import matplotlib.animation as anm
+
+
+class Landmark:
+    def __init__(self, x, y):
+        self.pos = np.array([x,y]).T
+        self.id = None
+
+    def draw(self, ax, elems):
+        c = ax.scatter(self.pos[0], self.pos[1], s=100, marker="*", label="landmarks", color="orange")
+        elems.append(c)
+        elems.append(ax.text(self.pos[0], self.pos[1], "id:" + str(self.id), fontsize=10))
+
+
+class Map:
+    def __init__(self):
+        self.landmarks = []
+
+    def append_landmark(self, landmark):
+        landmark.id = len(self.landmarks)
+        self.landmarks.append(landmark)
+
+    def draw(self, ax, elems):
+        for lm in self.landmarks:
+            lm.draw(ax, elems)
+
 
 class World:
     def __init__(self, 
@@ -34,14 +60,7 @@ class World:
                 self.one_step(i, elems, ax) # デバッグ時はアニメーションさせない
         else:
             print('Start animation')
-            # self.ani = anm.FuncAnimation(fig, 
-            #                              self.one_step, 
-            #                              fargs=(elems,ax), 
-            #                              frames=36, 
-            #                              interval=1000, 
-            #                              repeat=False,
-            #                              )
-
+            
             # シミュレーション時間とタイムスパンからアニメーションを作成
             self.ani = anm.FuncAnimation(fig,
                                          self.one_step,
@@ -53,8 +72,6 @@ class World:
             print('objects', self.objects)
             print('elems ', elems)
 
-            # HTML(self.ani.to_jshtml())
-            # HTML(self.ani.to_html5_video())
             plt.show()
 
 
@@ -66,62 +83,11 @@ class World:
         # アニメーションを1コマ進めるメソッド
         while elems: 
             elems.pop().remove() # 二重描画を防止
-        # elems.append(ax.text(-4.4, 4.5, "t = " + str(i), fontsize=10))
         time_str = "t = %.2f[s]" % (self.time_interval * i)
         elems.append(ax.text(-4.4, 4.5, time_str, fontsize=10))
         for obj in self.objects:
             obj.draw(ax, elems)
-            # if hasattr(obj, "one_step"): obj.one_step(1.0)
             if hasattr(obj, "one_step"): obj.one_step(self.time_interval)
-
-
-class IdealRobot:
-    def __init__(self, pose, color='black'):
-        self.pose = pose
-        self.r = 0.2 # 描画用のロボット半径
-        self.color = color
-
-    def draw(self, ax, elems):
-        x, y, theta = self.pose
-        xn = x + self.r * math.cos(theta) # ロボット鼻先のX座標
-        yn = y + self.r * math.sin(theta) # ロボット鼻先のY座標
-
-        elems += ax.plot([x,xn], [y,yn], color=self.color) # 鼻先ベクトル
-        c = patches.Circle(xy=(x,y), radius=self.r, fill=False, color=self.color)
-        elems.append(ax.add_patch(c))
-
-
-    # 状態遷移関数(状態方程式)
-    @classmethod
-    def state_transition(cls,
-                         nu,    # 速度 v_t
-                         omega, # 角速度 ω_t
-                         time,  # Δt
-                         pose,  # 時刻tでの(x_t-1, y_t-1, θ_t-1)
-                         ):
-        """
-        状態方程式
-        入力:
-            + 現在時刻t-1の状態: (x_t-1, y_t-1, θ_t-1)
-            + Δtにおける変化量: (v_t, ω_t)
-
-        出力
-            + 次の時刻tの状態: (x_t, y_t, θ_t)
-        """
-        t0 = pose[2] # θ_t-1
-        if math.fabs(omega) < 1e-10: # 角速度がほぼゼロの場合
-            return pose + np.array([
-                nu * math.sin(t0), # v_t(x) * sin(θ_t-1) = Δx
-                nu * math.cos(t0), # v_t(y) * cos(θ_t-1) = Δy
-                omega,             # ω_t = Δθ
-            ])
-        
-        else:
-            return pose + np.array([
-                nu / omega * (math.sin(t0 + omega*time) - math.sin(t0)),      # Δx = v_t(x) / ω_t * (sin(θ_t-1 + ω_t * Δt) - sin(θ_t-1))
-                nu / omega * (-1 * math.cos(t0 + omega*time) + math.cos(t0)), # Δy = v_t(y) / ω_t * (-cos(θ_t-1 + ω_t * Δt) + cos(θ_t-1))
-                omega * time                                                  # Δθ = ω_t * Δt
-            ])
 
 
 class Agent:
@@ -133,7 +99,7 @@ class Agent:
         return self.nu, self.omega
     
 
-class AgentIdelRobot:
+class IdealRobot:
     def __init__(self, 
                  pose,          # ロボットの姿勢 (x, y, Θ)
                  agent=None,    # ロボットのエージェント
@@ -195,67 +161,44 @@ class AgentIdelRobot:
                 nu / omega * (-1 * math.cos(t0 + omega*time) + math.cos(t0)), # Δy = v_t(y) / ω_t * (-cos(θ_t-1 + ω_t * Δt) + cos(θ_t-1))
                 omega * time                                                  # Δθ = ω_t * Δt
             ])
+        
+
+class IdealCamera:
+    def __init__(self, env_map):
+        self.map = env_map
+
+    def data(self, cam_pose):
+        observed = []
+        for lm in self.map.landmarks:
+            p = self.observation_function(cam_pose, lm.pos)
+            observed.append((p, lm.id))
+
+        return observed
+    
+    @classmethod
+    def observation_function(cls, cam_pose, obj_pos):
+        diff = obj_pos - cam_pose[:2]
+        phi = math.atan2(diff[1], diff[0]) - cam_pose[2]
+        while phi >= np.pi: phi -= 2*np.pi
+        while phi < -np.pi: phi += 2*np.pi
+        return np.array([np.hypot(*diff), phi]).T
 
 
 def case1():
-    world = World()
-    robot1 = IdealRobot(pose=np.array([2, 3, math.pi/6]).T)
-    robot2 = IdealRobot(pose=np.array([-2, -1, math.pi/5 * 6]).T, color='red')
-    world.append(robot1)
-    world.append(robot2)
+    world = World(10, 0.1)
+
+    m = Map()
+    m.append_landmark(Landmark(2,-2))  # id: 0
+    m.append_landmark(Landmark(-1,-3)) # id: 1
+    m.append_landmark(Landmark(3,3))   # id: 2
+    world.append(m)
+
+    agent = Agent(0.0, 0.0) # 0.2 [m/s] で直進
+    robot = IdealRobot(pose=np.array([0, 0, 0]).T, agent=None, color="blue")
+    world.append(robot)
+
     world.draw()
 
-def case2():
-    ##############################
-    # 原点から0.1[m/s]で1[s]直進 #
-    ##############################
-    result_pose = \
-    IdealRobot.state_transition(
-        0.1,                # 速度
-        0.0,                # 角速度
-        1.0,                # Δタイム
-        np.array([0,0,0]).T # 状態
-    )
-    print('原点から0.1[m/s]で1[s]直進\t', result_pose)
-
-    #########################################
-    # 原点から0.1[m/s], 10[deg/s]で9[s]移動 #
-    #########################################
-    result_pose = \
-    IdealRobot.state_transition(
-        0.1,                     # 速度
-        10.0 / 180 * math.pi,    # 角速度
-        9.0,                     # Δタイム
-        np.array([0,0,0]).T      # 状態
-    )
-    print('原点から0.1[m/s], 10[deg/s]で9[s]移動\t', result_pose)
-
-    ##########################################
-    # 原点から0.1[m/s], 10[deg/s]で18[s]移動 #
-    ##########################################
-    result_pose = \
-    IdealRobot.state_transition(
-        0.1,                     # 速度
-        10.0 / 180 * math.pi,    # 角速度
-        18.0,                    # Δタイム
-        np.array([0,0,0]).T      # 状態
-    )
-    print('原点から0.1[m/s], 10[deg/s]で18[s]移動\t', result_pose)
-
-
-def case3():
-    world = World(30, 0.3)
-    straight = Agent(0.2, 0.0) # 0.2 [m/s] で直進
-    circling = Agent(0.2, 10.0 / 180.0 * math.pi) # 0.2[m/s], 10[deg/s] で円を描く
-    robot1 = AgentIdelRobot(pose=np.array([2, 3, math.pi/6]).T, agent=straight, color="black")
-    robot2 = AgentIdelRobot(pose=np.array([-2, -1, math.pi/5*6]).T, agent=circling, color="red")
-    robot3 = AgentIdelRobot(np.array([0, 0, 0]).T, agent=None, color="blue")
-    world.append(robot1)
-    world.append(robot2)
-    world.append(robot3)
-    world.draw()
 
 if __name__ == "__main__":
-    # case1()
-    # case2()
-    case3()
+    case1()

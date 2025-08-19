@@ -1,0 +1,9 @@
+
+
+numpy
+scipy
+matplotlib
+japanize_matplotlib
+python_dotenv
+pandas
+seaborn
