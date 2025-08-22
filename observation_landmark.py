@@ -56,7 +56,7 @@ class World:
         elems = []
 
         if self.debug:
-            for i in range(1000): 
+            for i in range(int(self.time_span/self.time_interval)): 
                 self.one_step(i, elems, ax) # デバッグ時はアニメーションさせない
         else:
             print('Start animation')
@@ -103,19 +103,16 @@ class IdealRobot:
     def __init__(self, 
                  pose,          # ロボットの姿勢 (x, y, Θ)
                  agent=None,    # ロボットのエージェント
+                 sensor=None,
                  color='black', # ロボットの描画色
                  ):
         
         self.pose = pose
-        self.r = 0.2        # 描画用のロボット半径
+        self.r = 0.2         # 描画用のロボット半径
         self.color = color
         self.agent = agent
-        self.poses = [pose] # ロボットの軌跡
-
-    def one_step(self, time_interval):
-        if not self.agent: return
-        nu, omega = self.agent.decision()
-        self.pose = self.state_transition(nu, omega, time_interval, self.pose)
+        self.poses = [pose]  # ロボットの軌跡
+        self.sensor = sensor # センサー
 
     def draw(self, ax, elems):
         x, y, theta = self.pose
@@ -126,9 +123,17 @@ class IdealRobot:
         c = patches.Circle(xy=(x,y), radius=self.r, fill=False, color=self.color)
         elems.append(ax.add_patch(c))
 
-        # 軌跡の描画
+        # ロボットの移動軌跡の描画
         self.poses.append(self.pose)
         elems += ax.plot([e[0] for e in self.poses], [e[1] for e in self.poses], linewidth=0.5, color="black")
+
+        # ロボットからランドマークまでの距離と方角を描画
+        if self.sensor and len(self.poses) > 1:
+            self.sensor.draw(ax, elems, self.poses[-2])
+
+        # Agentの描画
+        if self.agent and hasattr(self.agent, "draw"):
+            self.agent.draw(ax, elems)
 
     # 状態遷移関数(状態方程式)
     @classmethod
@@ -162,19 +167,44 @@ class IdealRobot:
                 omega * time                                                  # Δθ = ω_t * Δt
             ])
         
+    def one_step(self, time_interval):
+        if not self.agent: return
+        obs = self.sensor.data(self.pose) if self.sensor else None
+        nu, omega = self.agent.decision(obs)
+        self.pose = self.state_transition(nu, omega, time_interval, self.pose)
+        if self.sensor: self.sensor.data(self.pose)
+        
 
 class IdealCamera:
-    def __init__(self, env_map):
+    def __init__(self, 
+                 env_map,
+                 distance_range=(0.5,6.0),
+                 direction_range=(-math.pi/3,math.pi/3),
+                 ):
         self.map = env_map
+        self.lastdata = []
+    
+        self.distance_range = distance_range
+        self.direction_range = direction_range
+
+    def visible(self, polarpos):
+        if polarpos is None:
+            return False
+        
+        return self.distance_range[0] <= polarpos[0] <= self.distance_range[1] \
+            and self.direction_range[0] <= polarpos[1] <= self.direction_range[1]
 
     def data(self, cam_pose):
         observed = []
         for lm in self.map.landmarks:
-            p = self.observation_function(cam_pose, lm.pos)
-            observed.append((p, lm.id))
-
+            z = self.observation_function(cam_pose, lm.pos)
+            if self.visible(z):
+                observed.append((z, lm.id))
+            
+        self.lastdata = observed
         return observed
     
+    # センサからのデータ取得(観測方程式)
     @classmethod
     def observation_function(cls, cam_pose, obj_pos):
         diff = obj_pos - cam_pose[:2]
@@ -183,6 +213,14 @@ class IdealCamera:
         while phi < -np.pi: phi += 2*np.pi
         return np.array([np.hypot(*diff), phi]).T
 
+    def draw(self, ax, elems, cam_pose):
+        for lm in self.lastdata:
+            x, y, theta = cam_pose
+            distance, direction = lm[0][0], lm[0][1]
+            lx = x + distance * math.cos(direction + theta)
+            ly = y + distance * math.sin(direction + theta)
+            elems += ax.plot([x,lx], [y,ly], color="pink")
+        
 
 def case1():
     world = World(10, 0.1)
@@ -193,12 +231,39 @@ def case1():
     m.append_landmark(Landmark(3,3))   # id: 2
     world.append(m)
 
-    agent = Agent(0.0, 0.0) # 0.2 [m/s] で直進
     robot = IdealRobot(pose=np.array([0, 0, 0]).T, agent=None, color="blue")
     world.append(robot)
 
     world.draw()
 
 
+def case2():
+    world = World(30, 0.1)
+
+    m = Map()
+    m.append_landmark(Landmark(2,-2))  # id: 0
+    m.append_landmark(Landmark(-1,-3)) # id: 1
+    m.append_landmark(Landmark(3,3))   # id: 2
+    world.append(m)
+
+    straight = Agent(0.02, 0.0)
+    circling = Agent(0.2, 10.0/180*math.pi)
+    robot1 = IdealRobot(np.array([0,0,math.pi/6]).T, sensor=IdealCamera(m), agent=straight)
+    robot2 = IdealRobot(np.array([-2,-1,math.pi/5*6]).T, sensor=IdealCamera(m), agent=circling, color="red")
+    world.append(robot1)
+    world.append(robot2)
+
+    world.draw()
+
+    # シミュレーション後のランドマーク位置
+    cam = IdealCamera(m)    
+    p = cam.data(robot2.pose)
+    print(p)
+
+
+
+
+
 if __name__ == "__main__":
-    case1()
+    # case1()
+    case2()
