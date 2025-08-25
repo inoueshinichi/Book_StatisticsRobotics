@@ -107,7 +107,7 @@ def kidnap_pattern():
 
 
 def noise_sensor_pattern():
-    world = World(30, 0.1)
+    world = World(50, 0.1)
 
     m = Map()
     m.append_landmark(Landmark(-4,2))
@@ -123,7 +123,7 @@ def noise_sensor_pattern():
 
     circling = Agent(0.5, 10.0/180*math.pi)
     r = Robot(np.array([0,0,0]).T, 
-              sensor=Camera(m), 
+              sensor=Camera(m, phantom_prob=0.01, occlusion_prob=0.01), 
               agent=circling,
               expected_kidnap_time=10,
               )
