@@ -65,10 +65,10 @@ class IdealRobot:
         t0 = pose[2] # θ_t-1
         if math.fabs(omega) < 1e-10: # 角速度がほぼゼロの場合
             return pose + np.array([
-                nu * math.sin(t0), # v_t(x) * sin(θ_t-1) = Δx
-                nu * math.cos(t0), # v_t(y) * cos(θ_t-1) = Δy
-                omega,             # ω_t = Δθ
-            ])
+                    nu * math.cos(t0), # v_t(x) * cos(θ_t-1) = Δx
+                    nu * math.sin(t0), # v_t(y) * sin(θ_t-1) = Δy 
+                    omega,             # ω_t = Δθ
+                ])
         
         else:
             return pose + np.array([
