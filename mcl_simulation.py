@@ -5,6 +5,7 @@ Monte Carlo Localization (MCL)を用いた
 import copy
 import math
 import numpy as np
+import pandas as pd
 
 from world import World
 from map import Map
@@ -70,7 +71,7 @@ def mcl4_pattern():
                                nu=0.2,
                                omega=10.0/180*math.pi,
                                estimator=estimator)
-    r = Robot(initial_pose, sensor=None, agent=circling, expected_kidnap_time=None, color="red")
+    r = Robot(initial_pose, sensor=None, agent=circling, color="red")
     world.append(r)
 
     world.draw()
@@ -92,23 +93,66 @@ def mcl5_pattern(motion_noise_stds):
     world.draw()
 
 
-def decision_variance_params():
+# def mcl6_pattern():
+#     time_interval = 0.1 # 0.1[s]
+#     world = World(40, time_interval)
+
+#     initial_pose = np.array([0,0,0]).T
+#     robots = []
+
+#     estimator = Mcl(initial_pose, 100, 
+#                     motion_noise_stds={"nn":0.001, "no":0.001, "on":0.13, "oo":0.001})
+#     left = EstimationAgent(time_interval=time_interval,
+#                                nu=0.1,
+#                                omega=0.0,
+#                                estimator=estimator)
+#     for i in range(100):
+#         r = Robot(initial_pose, sensor=None, agent=left, expected_kidnap_time=None, color="red")
+#         world.append(r)
+#         robots.append(r)
+
+#     world.draw()
+
+def motion_test_forward():
     # ロボットの動きをブラックボックスと見立てて,
     # 繰り返し実験からロボットの雑音パラメータを決定する作業
 
-    world = World(40.0, 0.1)
+    world = World(40, 0.1)
 
     initial_pose = np.array([0,0,0]).T
     robots = []
-    r = Robot(initial_pose, sensor=None, agent=Agent(0.1, 0.0), expected_kidnap_time=None)
+    r = Robot(initial_pose, sensor=None, agent=Agent(0.1, 0.0))
 
     for i in range(100):
         copy_r = copy.copy(r)
         copy_r.distance_until_noise = copy_r.noise_pdf.rvs() # 最初に雑音が発生するタイミングを変える
         world.append(copy_r)
-        robots.append(copy_r)
-    
+        robots.append(copy_r)   
+
+    world.draw() 
+
+
+def motion_test_forward_bias():
+    world = World(40.0, 0.1)
+    initial_pose = np.array([0,0,0]).T
+    robots = []
+
+    for i in range(100):
+        r = Robot(initial_pose, sensor=None, agent=Agent(0.1, 0.0)) # ここで生成されるロボットは異なるバイアスを持つ
+        world.append(r)
+        robots.append(r)
+
     world.draw()
+
+    poses = pd.DataFrame([[math.sqrt(r.pose[0]**2 + r.pose[1]**2), r.pose[2]] for r in robots],
+                         columns=['r', 'theta'])
+    print(poses.transpose())
+
+    print(poses["r"].var()) 
+    print(poses["r"].mean())
+    print(math.sqrt(poses["r"].var()/poses["r"].mean()))
+
+
 
 if __name__ == "__main__":
     # mcl1_pattern()
@@ -121,5 +165,7 @@ if __name__ == "__main__":
     # mcl5_pattern({"nn":0.1, "no":0.01, "on":0.01, "oo":0.01}) # 移動にノイズが大きい
     # mcl5_pattern({"nn":0.1, "no":0.01, "on":0.01, "oo":0.001}) # 回転にノイズが小さい
     # mcl5_pattern({"nn":0.02, "no":0.01, "on":0.01, "oo":0.1}) # 移動にノイズが小さい
-    decision_variance_params()
+    # motion_test_forward()
+    motion_test_forward_bias()
+    # mcl6_pattern()
 

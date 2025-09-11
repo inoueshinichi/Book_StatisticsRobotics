@@ -37,6 +37,11 @@ class EstimationAgent(Agent):
 
     
     def draw(self, ax, elems):
-        # elems.append(ax.text(0, 0, "hoge", fontsize=10))
         self.estimator.draw(ax, elems)
+        if self.estimator:
+            x, y, t = self.estimator.pose
+            s = "({:.2f}, {:.2f}, {})".format(x, y, int(t*180/math.pi)%360)
+            elems.append(ax.text(x, y+0.1, s, fontsize=8))
+
+        
 

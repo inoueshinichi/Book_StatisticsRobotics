@@ -68,7 +68,7 @@ class IdealRobot:
                     nu * math.cos(t0), # v_t(x) * cos(θ_t-1) = Δx
                     nu * math.sin(t0), # v_t(y) * sin(θ_t-1) = Δy 
                     omega,             # ω_t = Δθ
-                ])
+                ]) * time # Δtだけ移動
         
         else:
             return pose + np.array([
@@ -97,7 +97,7 @@ class Robot(IdealRobot):
                  bias_rate_stds=(0.1,0.1),    # (nu,omega)に対するバイアス誤差
                  expected_stuck_time=1e-100,  # スタックするまでの平均時間
                  expected_escape_time=1e-100, # スタックから抜け出すまでの平均時間
-                 expected_kidnap_time=1e-100, # 誘拐が発生するまでの平均時間
+                 expected_kidnap_time=1e100,  # 誘拐が発生するまでの平均時間(10^100)
                  kidnap_range_x=(-5.0,5.0),   # ワープ範囲(x)
                  kidnap_range_y=(-5.0,5.0),   # ワープ範囲(y)
                  ):
