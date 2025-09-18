@@ -95,7 +95,7 @@ class Robot(IdealRobot):
                  noise_per_meter=5,           # 1[m]あたりの小石の数
                  noise_std=math.pi/60,        # 小石を踏んだ時にロボットの向きΘ[deg]に発生する雑音の標準偏差 
                  bias_rate_stds=(0.1,0.1),    # (nu,omega)に対するバイアス誤差
-                 expected_stuck_time=1e-100,  # スタックするまでの平均時間
+                 expected_stuck_time=1e100,  # スタックするまでの平均時間
                  expected_escape_time=1e-100, # スタックから抜け出すまでの平均時間
                  expected_kidnap_time=1e100,  # 誘拐が発生するまでの平均時間(10^100)
                  kidnap_range_x=(-5.0,5.0),   # ワープ範囲(x)
@@ -105,56 +105,30 @@ class Robot(IdealRobot):
         super().__init__(pose, agent, sensor, color)
 
         # ノイズ
-        if noise_per_meter and noise_std:
-            self.is_state_noise = True
-            self.noise_pdf = expon(scale=1.0/(1e-100 + noise_per_meter)) # 小石を踏むまでの平均道のり. scaleは1/λ(平均道のり)
-            self.distance_until_noise = self.noise_pdf.rvs()
-            self.theta_noise = norm(scale=noise_std)
-        else:
-            self.is_state_noise = False
-            self.noise_pdf = None
-            self.distance_until_noise = None
-            self.theta_noise = None
-
-        # 制御指令バイアス
-        if bias_rate_stds:
-            self.is_control_bias = True
-            self.bias_rate_nu = norm.rvs(loc=1.0, scale=bias_rate_stds[0])    # 速度バイアス
-            self.bias_rate_omega = norm.rvs(loc=1.0, scale=bias_rate_stds[1]) # 角速度バイアス
-        else:
-            self.is_control_bias = False
-            self.bias_rate_nu = None
-            self.bias_rate_omega = None
+        self.noise_pdf = expon(scale=1.0/(1e-100 + noise_per_meter)) # 小石を踏むまでの平均道のり. scaleは1/λ(平均道のり)
+        self.distance_until_noise = self.noise_pdf.rvs()
+        self.theta_noise = norm(scale=noise_std)
+        
+        # 制御指令バイアス    
+        self.bias_rate_nu = norm.rvs(loc=1.0, scale=bias_rate_stds[0])    # 速度バイアス
+        self.bias_rate_omega = norm.rvs(loc=1.0, scale=bias_rate_stds[1]) # 角速度バイアス
+        
 
         # ロボットのスタック
-        if expected_stuck_time and expected_escape_time:
-            self.is_robot_stuck = True
-            self.stuck_pdf = expon(scale=expected_stuck_time)
-            self.escape_pdf = expon(scale=expected_escape_time)
-            self.time_until_stuck = self.stuck_pdf.rvs()
-            self.time_until_escape = self.escape_pdf.rvs()
-            self.is_stuck = False
-        else:
-            self.is_robot_stuck = False
-            self.stuck_pdf = None
-            self.escape_pdf = None
-            self.time_until_stuck = None
-            self.time_until_escape = None
-            self.is_stuck = None
+        self.stuck_pdf = expon(scale=expected_stuck_time)
+        self.escape_pdf = expon(scale=expected_escape_time)
+        self.time_until_stuck = self.stuck_pdf.rvs()
+        self.time_until_escape = self.escape_pdf.rvs()
+        self.is_stuck = False
+        
 
         # 誘拐
-        if expected_kidnap_time and kidnap_range_x and kidnap_range_y:
-            self.is_robot_kidnap = True
-            self.kidnap_pdf = expon(scale=expected_kidnap_time)
-            self.time_until_kidnap = self.kidnap_pdf.rvs()
-            rx, ry = kidnap_range_x, kidnap_range_y
-            self.kidnap_dist = uniform(loc=(rx[0],ry[0],0.0), scale=(rx[1]-rx[0], ry[1]-ry[0], 2*math.pi))
-        else:
-            self.is_robot_kidnap = False
-            self.kidnap_pdf = None
-            self.time_until_kidnap = None
-            rx, ry = None, None
-            self.kidnap_dist = None
+        self.is_robot_kidnap = True
+        self.kidnap_pdf = expon(scale=expected_kidnap_time)
+        self.time_until_kidnap = self.kidnap_pdf.rvs()
+        rx, ry = kidnap_range_x, kidnap_range_y
+        self.kidnap_dist = uniform(loc=(rx[0],ry[0],0.0), scale=(rx[1]-rx[0], ry[1]-ry[0], 2*math.pi))
+        
 
 
     def noise(self, pose, nu, omega, time_interval):
@@ -203,24 +177,20 @@ class Robot(IdealRobot):
         nu, omega = self.agent.decision(obs) 
 
         # 制御値に対するバイアス
-        if self.is_control_bias:
-            nu, omega = self.bias(nu, omega) 
+        nu, omega = self.bias(nu, omega) 
 
         # スタック
-        if self.is_robot_stuck:
-            nu, omega = self.stuck(nu, omega, time_interval) 
+        nu, omega = self.stuck(nu, omega, time_interval) 
 
         # 更新(理想)
         self.pose = self.state_transition(nu, omega, time_interval, self.pose)
 
         # ノイズ
-        if self.is_state_noise:
-            self.pose = self.noise(self.pose, nu, omega, time_interval) 
+        self.pose = self.noise(self.pose, nu, omega, time_interval) 
 
         # 誘拐
-        if self.is_robot_kidnap:
-            self.pose = self.kidnap(self.pose, time_interval) 
-            if self.sensor: self.sensor.data(self.pose)
+        self.pose = self.kidnap(self.pose, time_interval) 
+        if self.sensor: self.sensor.data(self.pose)
 
 
 

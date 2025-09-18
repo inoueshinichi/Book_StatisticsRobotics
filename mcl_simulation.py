@@ -4,6 +4,7 @@ Monte Carlo Localization (MCL)を用いた
 """
 import copy
 import math
+from pprint import pprint
 import numpy as np
 import pandas as pd
 
@@ -93,25 +94,7 @@ def mcl5_pattern(motion_noise_stds):
     world.draw()
 
 
-# def mcl6_pattern():
-#     time_interval = 0.1 # 0.1[s]
-#     world = World(40, time_interval)
 
-#     initial_pose = np.array([0,0,0]).T
-#     robots = []
-
-#     estimator = Mcl(initial_pose, 100, 
-#                     motion_noise_stds={"nn":0.001, "no":0.001, "on":0.13, "oo":0.001})
-#     left = EstimationAgent(time_interval=time_interval,
-#                                nu=0.1,
-#                                omega=0.0,
-#                                estimator=estimator)
-#     for i in range(100):
-#         r = Robot(initial_pose, sensor=None, agent=left, expected_kidnap_time=None, color="red")
-#         world.append(r)
-#         robots.append(r)
-
-#     world.draw()
 
 def motion_test_forward():
     # ロボットの動きをブラックボックスと見立てて,
@@ -153,6 +136,179 @@ def motion_test_forward_bias():
     print(math.sqrt(poses["r"].var()/poses["r"].mean()))
 
 
+def motion_test_rot_bias():
+    world = World(40.0, 0.1)
+
+    initial_pose = np.array([0,0,0]).T
+    robots = []
+
+    for i in range(100):
+        r = Robot(initial_pose, sensor=None, agent=Agent(0,0.1))
+        world.append(r)
+        robots.append(r)
+    
+    world.draw()
+
+    poses = pd.DataFrame([[math.sqrt(r.pose[0]**2 + r.pose[1]**2), r.pose[2]] 
+                          for r in robots], columns=['r', 'theta'])
+    poses.transpose()
+
+    print(poses["theta"].var())
+    print(poses["theta"].mean())
+    math.sqrt(poses["theta"].var()/poses["theta"].mean())
+
+
+def mcl6_pattern():
+    time_interval = 0.1 # 0.1[s]
+    world = World(40, time_interval)
+
+    initial_pose = np.array([0,0,0]).T
+
+    estimator = Mcl(initial_pose, 
+                    100, 
+                    motion_noise_stds={"nn":0.001, "no":0.001, "on":0.13, "oo":0.001})
+    a = EstimationAgent(time_interval=time_interval,
+                        nu=0.1,
+                        omega=0.0,
+                        estimator=estimator)
+
+    r = Robot(pose=initial_pose, sensor=None, agent=a, color="red")
+    world.append(r)
+
+    world.draw()
+
+
+def mcl7_pattern():
+    time_interval = 0.1
+    world = World(40.0, time_interval)
+
+    initial_pose = np.array([0,0,0]).T
+
+    estimator = Mcl(initial_pose,
+                    100,
+                    motion_noise_stds={"nn":0.001, "no":0.001, "on":0.13, "oo":0.001})
+    circling = EstimationAgent(time_interval, 0.2, 10.0/180*math.pi, estimator)
+    r = Robot(initial_pose, sensor=None, agent=circling, color="red" )
+    world.append(r)
+
+    world.draw()
+
+
+def mcl8_pattern():
+    time_interval = 0.1
+
+    world = World(40.0, time_interval)
+
+    for i in range(100):
+        r = Robot(np.array([0,0,0]).T, sensor=None, agent=Agent(0.2, 10.0/180*math.pi), color="grey")
+        world.append(r)
+    
+    world.draw()
+
+
+def mcl9_pattern():
+    time_interval = 0.1
+    world = World(40.0, time_interval, debug=False)
+
+    # 地図を生成して3つのランドマークを追加
+    m = Map()
+    for ln in [(-4,2), (2,-3), (3,3)]:
+        m.append_landmark(Landmark(*ln))
+    world.append(m)
+
+    # ロボットを作る
+    initial_pose = np.array([0,0,0]).T
+    estimator = Mcl(initial_pose, 100)
+    a = EstimationAgent(time_interval, 0.2, 10.0/180*math.pi, estimator)
+    r = Robot(initial_pose, sensor=Camera(m), agent=a, color="red")
+    world.append(r)
+
+    world.draw()
+
+
+def mcl10_pattern():
+    time_interval = 0.1
+    world = World(40.0, time_interval, debug=True)
+
+    # 地図を生成して3つのランドマークを追加
+    m = Map()
+    for ln in [(-4,2), (2,-3), (3,3)]:
+        m.append_landmark(Landmark(*ln))
+    world.append(m)
+
+    # ロボットを作る
+    initial_pose = np.array([0,0,0]).T
+    estimator = Mcl(initial_pose, 100)
+    a = EstimationAgent(time_interval, 0.2, 10.0/180*math.pi, estimator)
+    r = Robot(initial_pose, sensor=Camera(m), agent=a, color="red")
+    world.append(r)
+
+    world.draw()
+
+
+def sensor_experiment():
+    m = Map()
+    m.append_landmark(Landmark(1,0))
+
+    distance = []
+    direction = []
+
+    for i in range(100):
+        c = Camera(m) # バイアスの影響も考慮するために毎回カメラを新規作成
+        d = c.data(np.array([0,0,0]).T) # カメラ位置
+        if len(d) > 0:
+            distance.append(d[0][0][0])
+            direction.append(d[0][0][1])
+    
+    df = pd.DataFrame()
+    df["distance"] = distance
+    df["direction"] = direction
+
+    pprint(df)
+    print()
+    print(df.std()) # 標準偏差(距離,角度)
+    print(df.mean()) # 平均(距離,角度)
+
+
+def mcl11_pattern():
+    time_interval = 0.1
+    world = World(40, time_interval, debug=False)
+
+    # 地図 & ランドマーク
+    m = Map()
+    for ln in [(-4,2), (2,-3), (3,3)]:
+        m.append_landmark(Landmark(*ln))
+    world.append(m)
+
+    # ロボット
+    initial_pose = np.array([0,0,0]).T
+    estimator = Mcl(m, initial_pose, 100) # EstimatorにMapを渡す
+    a = EstimationAgent(time_interval, 0.2, 10.0/180*math.pi, estimator)
+    r = Robot(initial_pose, sensor=Camera(m), agent=a, color="red")
+    world.append(r)
+
+    world.draw()
+
+
+def mcl12_pattern():
+    time_interval = 0.1
+    world = World(40, time_interval, debug=False)
+
+    # 地図&ランドマーク
+    m = Map()
+    for ln in [(-4,2), (2,-3), (3,3)]:
+        m.append_landmark(Landmark(*ln))
+    world.append(m)
+
+    # ロボット
+    initial_pose = np.array([0,0,0]).T
+    estimator = Mcl(m, initial_pose, 100)
+    a = EstimationAgent(time_interval, 0.2, 10.0/180*math.pi, estimator)
+    r = Robot(initial_pose, sensor=Camera(m), agent=a, color="red")
+    world.append(r)
+
+    world.draw()
+
 
 if __name__ == "__main__":
     # mcl1_pattern()
@@ -166,6 +322,14 @@ if __name__ == "__main__":
     # mcl5_pattern({"nn":0.1, "no":0.01, "on":0.01, "oo":0.001}) # 回転にノイズが小さい
     # mcl5_pattern({"nn":0.02, "no":0.01, "on":0.01, "oo":0.1}) # 移動にノイズが小さい
     # motion_test_forward()
-    motion_test_forward_bias()
+    # motion_test_forward_bias()
+    # motion_test_rot_bias()
     # mcl6_pattern()
+    # mcl7_pattern()
+    # mcl8_pattern()
+    # mcl9_pattern()
+    # mcl10_pattern()
+    # sensor_experiment()
+    # mcl11_pattern()
+    mcl12_pattern()
 

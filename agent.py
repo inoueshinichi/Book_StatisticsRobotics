@@ -29,19 +29,21 @@ class EstimationAgent(Agent):
         self.prev_nu = 0.0
         self.prev_omega = 0.0
 
-    # MCLのmotion_updateを呼ぶ
+    # MCLの状態方程式で更新, 観測方程式で補正
     def decision(self, observation=None):
         self.estimator.motion_update(self.prev_nu, self.prev_omega, self.time_interval)
         self.prev_nu, self.prev_omega = self.nu, self.omega
+        self.estimator.observation_update(observation)
         return self.nu, self.omega
 
     
     def draw(self, ax, elems):
         self.estimator.draw(ax, elems)
-        if self.estimator:
-            x, y, t = self.estimator.pose
-            s = "({:.2f}, {:.2f}, {})".format(x, y, int(t*180/math.pi)%360)
-            elems.append(ax.text(x, y+0.1, s, fontsize=8))
+
+        # Write ml
+        x, y, t = self.estimator.pose
+        s = "({:.2f}, {:.2f}, {})".format(x, y, int(t*180/math.pi)%360)
+        elems.append(ax.text(x, y+0.1, s, fontsize=8))
 
         
 
