@@ -63,9 +63,7 @@ class Mcl:
                  direction_dev=0.05):
         
         # パーティクルの生成
-        self.particles = [
-            Particle(init_pose, 1.0/num) for i in range(num)
-            ]
+        self.particles = [Particle(init_pose, 1.0/num) for i in range(num)]
         
         self.map = envmap
         self.distance_dev_rate = distance_dev_rate
