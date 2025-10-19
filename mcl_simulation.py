@@ -14,7 +14,7 @@ from landmarks import Landmark
 from robot import Robot, IdealRobot
 from sensor import IdealCamera, Camera
 from agent import Agent, EstimationAgent
-from mcl import Mcl
+from mcl import Mcl, GlobalMcl
 
 
 def mcl1_pattern():
@@ -310,6 +310,70 @@ def mcl12_pattern():
     world.draw()
 
 
+def mcl13_pattern():
+    # 大域的自己位置推定
+    # パーティクルの初期位置とロボットの初期位置を一様分布で初期化
+    animation = True
+    time_interval = 0.1
+    world = World(30, time_interval, debug=not animation)
+
+    m = Map()
+    for ln in [(-4,2),(2,-3),(3,3)]:
+        m.append_landmark(Landmark(*ln))
+    world.append(m)
+
+    init_pose = np.array([
+        np.random.uniform(-5.0,5.0),
+        np.random.uniform(-5.0,5.0),
+        np.random.uniform(-math.pi, math.pi),
+    ]).T
+
+    pf = GlobalMcl(m, 100)
+    a = EstimationAgent(time_interval, 0.2, 10.0/180*math.pi, pf)
+    r = Robot(init_pose, sensor=Camera(m), agent=a, color="red")
+    world.append(r)
+
+    world.draw()
+
+    # 真の姿勢と推定姿勢を表示
+    print(f"GT pose: {r.pose}, Pred pose: {pf.pose}")
+    
+
+def mcl14_pattern():
+    # 誘拐ロボット問題
+    animation = True
+    time_interval = 0.1
+    world = World(30, time_interval, debug=not animation)
+
+    m = Map()
+    for ln in [(-4,2),(2,-3),(3,3)]:
+        m.append_landmark(Landmark(*ln))
+    world.append(m)
+
+    # パーティクルの初期位置とロボットの初期位置を別にする
+    # 各パーティクルの初期姿勢はランダム値だがすべて同じ
+    init_pose = np.array([
+        np.random.uniform(-5.0,5.0),
+        np.random.uniform(-5.0,5.0),
+        np.random.uniform(-math.pi, math.pi),
+    ]).T
+    robot_pose = np.array([
+        np.random.uniform(-5.0,5.0),
+        np.random.uniform(-5.0,5.0),
+        np.random.uniform(-math.pi, math.pi),
+    ]).T
+
+    pf = Mcl(m, init_pose, num=100)
+    a = EstimationAgent(time_interval, 0.2, 10.0/180*math.pi, pf)
+    r = Robot(robot_pose, sensor=Camera(m), agent=a, color="red")
+    world.append(r)
+
+    world.draw()
+
+    # 真の姿勢と推定姿勢を表示
+    print(f"GT pose: {r.pose}, Pred pose: {pf.pose}")
+
+
 if __name__ == "__main__":
     # mcl1_pattern()
     # mcl2_pattern()
@@ -331,5 +395,7 @@ if __name__ == "__main__":
     # mcl10_pattern()
     # sensor_experiment()
     # mcl11_pattern()
-    mcl12_pattern()
+    # mcl12_pattern()
+    # mcl13_pattern()
+    mcl14_pattern()
 

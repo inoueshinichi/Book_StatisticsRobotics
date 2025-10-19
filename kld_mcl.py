@@ -61,3 +61,46 @@ class KldMcl(Mcl):
 
 
     
+# 大域的自己位置推定
+class GlobalKldMcl(KldMcl):
+    def __init__(self,
+                 envmap,
+                 max_num,
+                 motion_noise_stds={"nn":0.19, "no":0.001, "on":0.13, "oo":0.2},
+                 distance_dev_rate=0.14,
+                 direction_dev=0.05):
+        # 初期値適当
+        super().__init__(envmap,
+                         np.array([0,0,0]).T,
+                         max_num,
+                         motion_noise_stds,
+                         distance_dev_rate,
+                         direction_dev)
+        
+        # パーティクルの作り直し
+        self.particles = [Particle(None, 1.0/max_num) for i in range(max_num)]
+        # 姿勢はランダム
+        for p in self.particles:
+            p.pose = np.array([
+                np.random.uniform(-5.0,5.0),
+                np.random.uniform(-5.0,5.0),
+                np.random.uniform(-math.pi,math.pi)]).T
+        
+        # 観測のある時はTrueにして無駄なKLDサンプリングをなくす
+        self.observed = False
+
+    def motion_update(self, nu, omega, time):
+        # 観測がなくパーティクル数が上限なら単に動かして終わり
+        if not self.observed and len(self.particles) == self.max_num:
+            for p in self.particles:
+                p.motion_update(nu, omega, time, self.motion_noise_rate_pdf)
+            return
+        
+        # KLDサンプリング
+        super().motion_update(nu, omega, time)
+
+    def observation_update(self, observation):
+        super().observation_update(observation)
+        self.observed = len(observation) > 0 # 観測が発生したか否か
+
+

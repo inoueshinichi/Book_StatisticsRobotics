@@ -48,7 +48,6 @@ def matQ(distance_dev, direction_dev):
     return np.diag(np.array([distance_dev**2, direction_dev**2]))
 
 
-
 class KalmanFilter:
     def __init__(self,
                  envmap,    # 環境地図
@@ -108,4 +107,20 @@ class KalmanFilter:
         xs = [x + math.cos(c-sigma3), x, x + math.cos(c+sigma3)]
         ys = [x + math.sin(c-sigma3), y, y + math.sin(c+sigma3)]
         elems += ax.plot(xs, ys, color="blue", alpha=0.5)
+
+
+# 大域的自己位置推定
+class GlobalKf(KalmanFilter):
+    def __init__(self,
+                 envmap,
+                 motion_noise_stds={"nn":0.19, "no":0.001, "on":0.13, "oo":0.2},
+                 distance_dev_rate=0.14,
+                 direction_dev=0.05):
+        super().__init__(envmap, np.array([0,0,0]).T,
+                         motion_noise_stds,
+                         distance_dev_rate,
+                         direction_dev)
+        # 初期値は平均０、分散共分散の値を(大)にしてあやふやにする
+        self.belief = multivariate_normal(mean=np.array([0,0,0]),
+                                          cov=np.diag([1e+4, 1e+4, 1e+4]))
 

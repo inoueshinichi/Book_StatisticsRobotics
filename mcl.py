@@ -158,3 +158,23 @@ class Mcl:
                                angles="xy",scale_units="xy",
                                scale=1.5,color="blue",alpha=0.5))
 
+
+# MCLによる大域的自己位置推定
+class GlobalMcl(Mcl):
+    def __init__(self,
+                 envmap,
+                 num,
+                 motion_noise_stds={"nn":0.19, "no":0.001, "on":0.13, "oo":0.2},
+                 distance_dev_rate=0.14,
+                 direction_dev=0.05): # ロボットの初期姿勢を与えない
+        
+        super().__init__(envmap, np.array([0,0,0]).T, num, motion_noise_stds,
+                         distance_dev_rate, direction_dev)
+        # ランダムに姿勢を初期化(なるべく一様分布)
+        for p in self.particles:
+            p.pose = np.array([
+                np.random.uniform(-5.0,5.0),
+                np.random.uniform(-5.0,5.0),
+                np.random.uniform(-math.pi,math.pi)]).T
+        
+    
