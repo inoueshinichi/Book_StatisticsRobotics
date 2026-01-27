@@ -14,7 +14,7 @@ from landmarks import Landmark
 from robot import Robot, IdealRobot
 from sensor import IdealCamera, Camera
 from agent import Agent, EstimationAgent
-from mcl import Mcl, GlobalMcl
+from mcl import Mcl, GlobalMcl, ResetMcl
 
 
 def mcl1_pattern():
@@ -374,6 +374,57 @@ def mcl14_pattern():
     print(f"GT pose: {r.pose}, Pred pose: {pf.pose}")
 
 
+def mcl15_pattern():
+    # リセット付き状態分布MCL
+    time_interval = 0.1
+    world = World(300, time_interval, debug=True)
+
+    m = Map()                                  
+    m.append_landmark(Landmark(-4,2))
+    m.append_landmark(Landmark(2,-3))
+    m.append_landmark(Landmark(3,3))
+    world.append(m)
+
+    initial_pose = np.array([0,0,0]).T
+    pf = ResetMcl(m, initial_pose, 100)
+    circling = EstimationAgent(time_interval, 0.2, 10.0/180*math.pi, pf)
+    r = Robot(initial_pose, sensor=Camera(m), agent=circling, color="red")
+    world.append(r)
+
+    world.draw()
+
+    def display_alphas(pf):
+        for num in pf.alphas: ###mclalpharesult
+            print("landmarks:", num, "particles:", len(pf.particles), "min:", min(pf.alphas[num]), "max:", max(pf.alphas[num]))
+
+    display_alphas(pf)
+
+
+def mcl16_pattern():
+    # リセット付き状態分布MCL
+    time_interval = 0.1
+    world = World(40, time_interval, debug=True)
+
+    m = Map()                                  
+    m.append_landmark(Landmark(-4,2))
+    m.append_landmark(Landmark(2,-3))
+    m.append_landmark(Landmark(3,3))
+    world.append(m)
+
+    initial_pose = np.array([-4,-4,0]).T
+    pf = ResetMcl(m, initial_pose, 100)
+    circling = EstimationAgent(time_interval, 0.2, 10.0/180*math.pi, pf)
+    r = Robot(initial_pose, sensor=Camera(m), agent=circling, color="red")
+    world.append(r)
+
+    world.draw()
+
+    def display_alphas(pf):
+        for num in pf.alphas: ###mclalpharesult
+            print("landmarks:", num, "particles:", len(pf.particles), "min:", min(pf.alphas[num]), "max:", max(pf.alphas[num]))
+
+    display_alphas(pf)
+
 if __name__ == "__main__":
     # mcl1_pattern()
     # mcl2_pattern()
@@ -397,5 +448,7 @@ if __name__ == "__main__":
     # mcl11_pattern()
     # mcl12_pattern()
     # mcl13_pattern()
-    mcl14_pattern()
+    # mcl14_pattern()
+    mcl15_pattern()
+    # mcl16_pattern()
 

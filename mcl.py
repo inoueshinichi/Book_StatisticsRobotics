@@ -1,5 +1,5 @@
 """
-Monte Carlo Localization(MCL)によるパーティクルフィルタ
+パーティクルとMonte Carlo Localization(MCL)を用いたパーティクルフィルタ
 """
 import math
 import random
@@ -7,52 +7,9 @@ import copy
 import numpy as np
 from scipy.stats import multivariate_normal
 
-from robot import IdealRobot
-from sensor import IdealCamera
+from particles import Particle
 
-class Particle:
-    def __init__(self, init_pose, weight):
-        self.pose = init_pose
-        self.weight = weight
-
-    # 状態方程式
-    def motion_update(self,
-                      nu,
-                      omega,
-                      time,
-                      noise_rate_pdf, # 各ステップごとに確率分布が更新される
-                      ):
-        # ノイズによる不確かさ(有)
-        ns = noise_rate_pdf.rvs() # サンプリング (nn,no,on,oo)
-        noised_nu = nu + ns[0] * math.sqrt(abs(nu)/time) + ns[1] * math.sqrt(abs(omega)/time) # 移動量 = 前ステップの移動量 * ノイズ割合
-        noised_omega = omega + ns[2] * math.sqrt(abs(nu)/time) + ns[3] * math.sqrt(abs(omega)/time) # 回転量 = 前ステップの回転量 * ノイズ割合
-            
-        # 状態遷移方程式で現在の状態に更新
-        self.pose = IdealRobot.state_transition(noised_nu, noised_omega, time, self.pose)
-        
-    # 観測方程式
-    def observation_update(self,
-                           observation,
-                           envmap,
-                           distance_dev_rate,
-                           direction_dev,
-                           ):
-        for d in observation:
-            obs_pos = d[0]
-            obs_id = d[1]
-
-            # パーティクルの位置と地図からランドマークの距離と方角を算出
-            pos_on_map = envmap.landmarks[obs_id].pos # 地図上のランドマーク位置(lx,ly)
-            particle_suggest_pos = \
-                IdealCamera.observation_function(self.pose, pos_on_map) # カメラからランドマークまでの相対位置(L,φ)
-
-            # 尤度の計算
-            distance_dev = distance_dev_rate*particle_suggest_pos[0] # 観測距離が大きいほどノイズは大きいと仮定
-            cov = np.diag(np.array([distance_dev**2, direction_dev**2]))
-            self.weight *= multivariate_normal(mean=particle_suggest_pos, cov=cov).pdf(obs_pos) # 尤度(スカラ)を重みにかける
-
-        print(observation)
-
+# 単純なMCL
 class Mcl:
     def __init__(self, 
                  envmap,
@@ -177,4 +134,35 @@ class GlobalMcl(Mcl):
                 np.random.uniform(-5.0,5.0),
                 np.random.uniform(-math.pi,math.pi)]).T
         
+    
+# リセット付き状態分布用MCL
+class ResetMcl(Mcl):
+    def __init__(self,
+                 envmap,
+                 init_pose,
+                 num,
+                 motion_noise_stds={"nn":0.19, "no":0.001, "on":0.13, "oo":0.2},
+                 distance_dev_rate=0.14,
+                 direction_dev=0.05):
+        super().__init__(envmap, init_pose, num, motion_noise_stds,
+                         distance_dev_rate, direction_dev)
+        
+        # 観測値の周辺尤度(観測数毎)
+        self.alphas = {}
+
+    def observation_update(self, observation):
+        for p in self.particles:
+            p.observation_update(observation, self.map, self.distance_dev_rate, self.direction_dev)
+        
+        # alpha値の記録
+        alpha = sum([p.weight for p in self.particles])
+        obsnum = len(observation)
+        if not obsnum in self.alphas:
+            self.alphas[obsnum] = []
+        self.alphas[obsnum].append(alpha)
+
+        self.set_ml() # 最尤パーティクルをセット
+        self.resampling() # ここで重みの合計は1になる
+
+
     
