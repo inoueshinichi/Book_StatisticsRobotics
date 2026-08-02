@@ -136,3 +136,28 @@ class Camera(IdealCamera):
     
 
 
+class PsiCamera(Camera):
+
+    def data(self, cam_pose, orientation_noise=math.pi/90):
+        # orientation_noiseを追加。psiの雑音の大きさをセット
+        observed = []
+        for lm in self.map.landmarks:
+            # ランドマークとカメラの姿勢差
+            psi = norm.rvs(loc=math.atan2(cam_pose[1]-lm.pos[1], cam_pose[0]-lm.pos[0]),
+                                          scale=orientation_noise)
+            # 観測値(Xx, Xy, XΘ, Zx,Zy, ZΘ) -> 極座標(Zl, Zφ)
+            z = self.observation_function(cam_pose, lm.pos)
+            z = self.phantom(cam_pose, z)
+            z = self.oversight(z)
+            if self.visible(z): # FOVの範囲内
+                z = self.bias(z)
+                z = self.noise(z)
+                observed.append(([z[0], z[1], psi], lm.id))
+
+            self.lastdata = observed
+
+        return observed
+    
+
+
+

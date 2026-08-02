@@ -9,7 +9,7 @@ from robot import IdealRobot
 from sensor import IdealCamera
 from map import Map
 from landmarks import EstimatedLandmark
-from kalman_filter import matH, matQ
+from kalman_filter import matH, matQ, matM, matA, matF
 
 
 class Particle:
@@ -77,7 +77,6 @@ class MapParticle(Particle):
         Q = matQ(distance_dev_rate * z[0], direction_dev) # 線形化
         landmark.cov = np.linalg.inv(H.T @ np.linalg.inv(Q) @ H) # ∑ = (H^T Q^-1 H)^-1
 
-
     # override
     def observation_update(self, observation, distance_dev_rate, direction_dev):
         for d in observation:
@@ -100,12 +99,58 @@ class MapParticle(Particle):
         Q = matQ(distance_dev_rate * estm_z[0], direction_dev)
         K = landmark.cov @ H.T @ np.linalg.inv(Q + H @ landmark.cov @ H.T) # カルマンゲイン
 
-        # パーティクルの重みの更新
-        Q_z = H @ landmark.cov @ H.T + Q
-        self.weight *= multivariate_normal(mean=estm_z, cov=Q_z).pdf(z)
+        # パーティクルの重みの更新: fastslam2ではここでの重み更新は不要になる
+        # Q_z = H @ landmark.cov @ H.T + Q
+        # self.weight *= multivariate_normal(mean=estm_z, cov=Q_z).pdf(z)
 
         # ランドマークの更新
         landmark.pos = K @ (z - estm_z) + landmark.pos
         landmark.cov = (np.eye(2) - K @ H) @ landmark.cov
+
+    def drawing_params(self, hat_x, landmark, distance_dev_rate, direction_dev):
+        # 観測関数の線形化
+        ell = np.hypot(*(hat_x[0:2] - landmark.pos))
+        Qhat_zt = matQ(distance_dev_rate*ell, direction_dev)
+        hat_zt = IdealCamera.observation_function(hat_x, landmark.pos)
+        H_m = matH(hat_x, landmark.pos)[0:2, 0:2]
+        H_xt = matH(hat_x, landmark.pos)
+
+        # パーティクルの姿勢と地図からセンサ値の分布の共分散行列を計算
+        Q_zt = H_m @ landmark.cov @ H_m.T + Qhat_zt
+        return hat_zt, Q_zt, H_xt
+    
+    def gauss_for_drawing(self, hat_x, R_t, z, landmark, distance_dev_rate, direction_dev):
+        hat_zt, Q_zt, H_xt = self.drawing_params(hat_x, landmark, distance_dev_rate, direction_dev)
+        K = R_t @ H_xt.T @ np.linalg.inv(Q_zt + H_xt @ R_t @ H_xt.T)
+        return K @ (z - hat_zt) + hat_x, (np.eye(3) - K @ H_xt) @ R_t
+    
+    def motion_update2(self, nu, omega, time,
+                       motion_noise_stds,
+                       observation,
+                       distance_dev_rate,
+                       direction_dev): # fastslam2
+        # 移動後の分布を作る
+        M = matM(nu, omega, time, motion_noise_stds)
+        A = matA(nu, omega, time, self.pose[2])
+        R_t = A @ M @ A.T
+        hat_x = IdealRobot.state_transition(nu, omega, time, self.pose)
+
+        # fastslam2では, observation_update_landmark()で行っていた
+        # パーティクルの重みの更新をここで行う
+        for d in observation:
+            hat_zt, Q_zt, H_xt = self.drawing_params(
+                hat_x, self.map.landmarks[d[1]],
+                distance_dev_rate,
+                direction_dev
+            )
+
+            Sigma_zt = H_xt @ R_t @ H_xt.T + Q_zt
+            self.weight *= multivariate_normal(mean=hat_zt, cov=Sigma_zt).pdf(d[0])
+
+        for d in observation:
+            hat_x, R_t = self.gauss_for_drawing(hat_x, R_t, d[0], self.map.landmarks[d[1]],
+                                                distance_dev_rate, direction_dev)
+            
+        self.pose = multivariate_normal(mean=hat_x, cov=R_t + np.eye(3) * 1.0e-10).rvs()#次元が足りないので少し共分散を足す
 
 

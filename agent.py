@@ -4,6 +4,9 @@ import math
 import matplotlib.patches as patches
 import matplotlib.animation as anm
 
+import os
+from pathlib import Path
+
 # 制御指令コントローラ
 class Agent:
     def __init__(self, nu, omega):
@@ -46,4 +49,52 @@ class EstimationAgent(Agent):
         elems.append(ax.text(x, y+0.1, s, fontsize=8))
 
         
+class FastSlam2Agent(EstimationAgent):
+    def __init__(self, time_interval, nu, omega, estimator):
+        super().__init__(time_interval, nu, omega, estimator)
 
+    def decision(self, observation=None):
+        # センサ値を追加
+        self.estimator.motion_update(
+            self.prev_nu, 
+            self.prev_omega, 
+            self.time_interval, 
+            observation # 追加
+        )
+
+        self.prev_nu, self.prev_omega = self.nu, self.omega
+        self.estimator.observation_update(observation)
+        return self.nu, self.omega
+
+    
+from robot import IdealRobot
+
+class LoggerAgent(Agent):
+    def __init__(self, nu, omega, interval_time, init_pose):
+        # 更新時間と初期姿勢を変数に加える
+        super().__init__(nu, omega)
+        self.interval_time = interval_time
+        self.pose = init_pose
+        self.step = 0
+        current_dir = Path(__file__).resolve().parent
+        self.log = open(os.path.join(str(current_dir), "graph_slam_log_1.txt"), "w")
+
+    def decision(self, observation):
+        if len(observation) != 0: # ランドマークが観測されていない姿勢は記録しない
+            self.log.write("x {} {} {} {}\n".format(self.step, *self.pose))
+            for obs in observation:
+                # z : step phi Zx, Zy, ZΘ -> カメラとランドマークの相対角度 + (ランドマークの姿勢)
+                self.log.write("z {} {} {} {} {}\n".format(self.step, obs[1], *obs[0]))
+
+            self.step += 1
+            self.log.flush()
+
+        self.pose = IdealRobot.state_transition(self.nu,
+                                                self.omega,
+                                                self.interval_time,
+                                                self.pose)
+        return self.nu, self.omega
+
+
+
+    
