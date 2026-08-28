@@ -5,19 +5,25 @@ import math
 import random
 import copy
 import numpy as np
+from typing import Dict, Tuple, List, Optional, Union
 from scipy.stats import multivariate_normal
 
 from particles import Particle
 
+from map import Map
+
 # 単純なMCL
 class Mcl:
     def __init__(self, 
-                 envmap,
-                 init_pose, 
-                 num,
-                 motion_noise_stds={"nn":0.19, "no":0.001, "on":0.13, "oo":0.2},
-                 distance_dev_rate=0.14,
-                 direction_dev=0.05):
+                 envmap: Map,
+                 init_pose: np.ndarray, 
+                 num: int,
+                 motion_noise_stds: Dict[str, float] = {
+                     "nn":0.19, "no":0.001, "on":0.13, "oo":0.2
+                 },
+                 distance_dev_rate: float = 0.14,
+                 direction_dev: float = 0.05,
+                 ):
         
         # パーティクルの生成
         self.particles = [Particle(init_pose, 1.0/num) for i in range(num)]
@@ -41,10 +47,7 @@ class Mcl:
         self.pose = self.ml.pose
 
     # このメソッドでパーティクルを動かす
-    def motion_update(self, 
-                      nu, 
-                      omega, 
-                      time, 
+    def motion_update(self, nu: float, omega: float, time: float, 
                       ):
         # print(self.motion_noise_rate_pdf.cov) # 共分散行列
         for p in self.particles:
@@ -105,15 +108,17 @@ class Mcl:
         for p in self.particles:
             p.weight = 1.0 / len(self.particles)
 
-
     def draw(self, ax, elems):
+        # print(f"mcl draw")
         xs = [p.pose[0] for p in self.particles]
         ys = [p.pose[1] for p in self.particles]
         vxs = [math.cos(p.pose[2])*p.weight*len(self.particles) for p in self.particles]
         vys = [math.sin(p.pose[2])*p.weight*len(self.particles) for p in self.particles]
-        elems.append(ax.quiver(xs,ys,vxs,vys,
+        blue_quiver = ax.quiver(xs,ys,vxs,vys,
                                angles="xy",scale_units="xy",
-                               scale=1.5,color="blue",alpha=0.5))
+                               scale=1.5,color="blue",alpha=0.5)
+        # print(f"blue_quiver: {blue_quiver}")
+        elems.append(blue_quiver)
 
 
 # MCLによる大域的自己位置推定

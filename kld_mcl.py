@@ -7,20 +7,25 @@ from scipy.stats import chi2 # カイ二乗分布
 import copy
 import math
 import random
-
 import numpy as np
+from typing import Dict, Tuple, List, Optional, Union
+from map import Map
+
 
 class KldMcl(Mcl):
     def __init__(self,
-                 envmap,
-                 init_pose,
-                 max_num, # 最大生成パーティクル数
-                 motion_noise_stds={"nn":0.19, "no":0.001, "on": 0.13, "oo":0.2},
-                 distance_dev_rate=0.14,
-                 direction_dev=0.05,
-                 widths=np.array([0.2, 0.2, math.pi/18]).T,
-                 epsilon=0.1,
-                 delta=0.01):
+                 envmap: Map,
+                 init_pose: np.ndarray,
+                 max_num: int, # 最大生成パーティクル数
+                 motion_noise_stds: Dict[str, float] = {
+                    "nn":0.19, "no":0.001, "on": 0.13, "oo":0.2
+                 },
+                 distance_dev_rate: float = 0.14,
+                 direction_dev: float = 0.05,
+                 widths: np.ndarray = np.array([0.2, 0.2, math.pi/18]).T,
+                 epsilon: float = 0.1,
+                 delta: float = 0.01,
+                 ):
         super().__init__(envmap,init_pose,1,motion_noise_stds,distance_dev_rate,direction_dev)
         self.widths = widths # 各空間XYΘのビン幅
         self.max_num = max_num
@@ -28,7 +33,7 @@ class KldMcl(Mcl):
         self.delta = delta
         self.binnum = 0 # ビンの数k
 
-    def motion_update(self, nu, omega, time): 
+    def motion_update(self, nu: float, omega: float, time: float): 
         ws = [e.weight for e in self.particles]
         if sum(ws) < 1e-100: ws = [e + 1e-100 for e in ws] # 重みの和がゼロになるのを回避
 
@@ -64,11 +69,15 @@ class KldMcl(Mcl):
 # 大域的自己位置推定
 class GlobalKldMcl(KldMcl):
     def __init__(self,
-                 envmap,
-                 max_num,
-                 motion_noise_stds={"nn":0.19, "no":0.001, "on":0.13, "oo":0.2},
-                 distance_dev_rate=0.14,
-                 direction_dev=0.05):
+                 envmap: Map, # 環境地図
+                 max_num: int, # 最大生成パーティクル数
+                 motion_noise_stds: Dict[str, float] = {
+                     # ばらつき(白色雑音)
+                     "nn":0.19, "no":0.001, "on":0.13, "oo":0.2
+                 },
+                 distance_dev_rate=0.14, # 直線成分のばらつき
+                 direction_dev=0.05, # 方角成分のばらつき
+                 ):
         # 初期値適当
         super().__init__(envmap,
                          np.array([0,0,0]).T,
@@ -89,7 +98,7 @@ class GlobalKldMcl(KldMcl):
         # 観測のある時はTrueにして無駄なKLDサンプリングをなくす
         self.observed = False
 
-    def motion_update(self, nu, omega, time):
+    def motion_update(self, nu: float, omega: float, time: float):
         # 観測がなくパーティクル数が上限なら単に動かして終わり
         if not self.observed and len(self.particles) == self.max_num:
             for p in self.particles:

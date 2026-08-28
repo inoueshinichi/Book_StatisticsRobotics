@@ -20,4 +20,5 @@ class Puddle:
         r = patches.Rectangle(self.lowerleft, w, h, color='blue', alpha=self.depth)
         elems.append(ax.add_patch(r))
 
-    
+    def inside(self, pose):
+        return all([self.lowerleft[i] < pose[i] < self.upperright[i] for i in [0, 1]])

@@ -39,6 +39,8 @@ class Particle:
                            distance_dev_rate,
                            direction_dev,
                            ):
+        if not observation: return
+        
         for d in observation:
             obs_pos = d[0]
             obs_id = d[1]

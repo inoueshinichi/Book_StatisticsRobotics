@@ -110,7 +110,7 @@ class KalmanFilter:
 
 
 # 大域的自己位置推定
-class GlobalKf(KalmanFilter):
+class GlobalKalmanFilter(KalmanFilter):
     def __init__(self,
                  envmap,
                  motion_noise_stds={"nn":0.19, "no":0.001, "on":0.13, "oo":0.2},

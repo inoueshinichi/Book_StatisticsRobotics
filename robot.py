@@ -1,6 +1,6 @@
 
 import math
-
+from typing import Dict, Set, List, Tuple, Union, Optional
 import numpy as np
 from scipy.stats import expon, norm, uniform
 import matplotlib.pyplot as plt
@@ -8,23 +8,25 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.animation as anm
 
+from sensor import Sensor
 
 class IdealRobot:
     def __init__(self, 
-                 pose,          # ロボットの姿勢 (x, y, Θ)
-                 agent=None,    # ロボットのエージェント
-                 sensor=None,
-                 color='black', # ロボットの描画色
+                 pose: np.ndarray,          # ロボットの姿勢 (x, y, Θ)
+                 agent = None,    # ロボットのエージェント
+                 sensor: Optional[Sensor] = None,
+                 color: str = 'black', # ロボットの描画色
                  ):
         
-        self.pose = pose
-        self.r = 0.2         # 描画用のロボット半径
-        self.color = color
+        self.pose: np.ndarray = pose
+        self.r: float = 0.2         # 描画用のロボット半径
+        self.color: str = color
         self.agent = agent
-        self.poses = [pose]  # ロボットの軌跡
-        self.sensor = sensor # センサー
+        self.poses: List[np.ndarray] = [pose]  # ロボットの軌跡
+        self.sensor: Optional[Sensor] = sensor # センサー
 
     def draw(self, ax, elems):
+        # print(f"robot draw")
         x, y, theta = self.pose
         xn = x + self.r * math.cos(theta) # ロボット鼻先のX座標
         yn = y + self.r * math.sin(theta) # ロボット鼻先のY座標
@@ -35,7 +37,9 @@ class IdealRobot:
 
         # ロボットの移動軌跡の描画
         self.poses.append(self.pose)
-        elems += ax.plot([e[0] for e in self.poses], [e[1] for e in self.poses], linewidth=0.5, color="black")
+        elems += ax.plot([e[0] for e in self.poses], 
+                         [e[1] for e in self.poses], 
+                         linewidth=0.5, color="black")
 
         # ロボットからランドマークまでの距離と方角を描画
         if self.sensor and len(self.poses) > 1:
@@ -43,16 +47,16 @@ class IdealRobot:
 
         # Agentの描画
         if self.agent and hasattr(self.agent, "draw"):
+            # print(f"self.agent.draw")
             self.agent.draw(ax, elems)
 
-    # 状態遷移関数(状態方程式)
     @classmethod
     def state_transition(cls,
-                         nu,    # 速度 v_t
-                         omega, # 角速度 ω_t
-                         time,  # Δt
-                         pose,  # 時刻tでの(x_t-1, y_t-1, θ_t-1)
-                         ):
+                         nu: float,    # 速度 v_t
+                         omega: float, # 角速度 ω_t
+                         time: float,  # Δt
+                         pose: np.ndarray,  # 時刻tでの(x_t-1, y_t-1, θ_t-1)
+                         ) -> np.ndarray:
         """
         状態方程式
         入力:
@@ -77,7 +81,8 @@ class IdealRobot:
                 omega * time                                                  # Δθ = ω_t * Δt
             ])
         
-    def one_step(self, time_interval):
+    def one_step(self, time_interval: float):
+        """ロボットの行動の1スイープ"""
         if not self.agent: return
         obs = self.sensor.data(self.pose) if self.sensor else None
         nu, omega = self.agent.decision(obs)
@@ -85,52 +90,61 @@ class IdealRobot:
         if self.sensor: self.sensor.data(self.pose)
 
         
-
 class Robot(IdealRobot):
     def __init__(self, 
-                 pose, 
-                 agent=None, 
-                 sensor=None, 
-                 color='black',
-                 noise_per_meter=5,           # 1[m]あたりの小石の数
-                 noise_std=math.pi/60,        # 小石を踏んだ時にロボットの向きΘ[deg]に発生する雑音の標準偏差 
-                 bias_rate_stds=(0.1,0.1),    # (nu,omega)に対するバイアス誤差
-                 expected_stuck_time=1e100,  # スタックするまでの平均時間
-                 expected_escape_time=1e-100, # スタックから抜け出すまでの平均時間
-                 expected_kidnap_time=1e100,  # 誘拐が発生するまでの平均時間(10^100)
-                 kidnap_range_x=(-5.0,5.0),   # ワープ範囲(x)
-                 kidnap_range_y=(-5.0,5.0),   # ワープ範囲(y)
+                 pose: np.ndarray, 
+                 agent = None, 
+                 sensor: Optional[Sensor] = None, 
+                 color: str = 'black',
+                 noise_per_meter: int = 5, # 1[m]あたりの小石の数
+                 noise_std: float = math.pi/60, # 小石を踏んだ時にロボットの向きΘ[deg]に発生する雑音の標準偏差 
+                 bias_rate_stds: Tuple[float,float] = (0.1,0.1), # (nu,omega)に対するバイアス誤差
+                 expected_stuck_time: Optional[float] = 1e100, # スタックするまでの平均時間
+                 expected_escape_time: Optional[float] = 1e-100, # スタックから抜け出すまでの平均時間
+                 expected_kidnap_time: Optional[float] = 1e100,  # 誘拐が発生するまでの平均時間(10^100)
+                 kidnap_range_x: Optional[Tuple[float,float]] = (-5.0,5.0),   # ワープ範囲(x)
+                 kidnap_range_y: Optional[Tuple[float,float]] = (-5.0,5.0),   # ワープ範囲(y)
                  ):
         
         super().__init__(pose, agent, sensor, color)
 
-        # ノイズ
-        self.noise_pdf = expon(scale=1.0/(1e-100 + noise_per_meter)) # 小石を踏むまでの平均道のり. scaleは1/λ(平均道のり)
-        self.distance_until_noise = self.noise_pdf.rvs()
-        self.theta_noise = norm(scale=noise_std)
+        # ノイズ(指数): 小石を踏むまでの平均道のり. scaleは1/λ(平均道のり)
+        self.noise_pdf = expon(scale=1.0/(1e-100 + noise_per_meter)) # 指数確率密度関数
+        self.distance_until_noise: float = self.noise_pdf.rvs()
+        self.theta_noise: float = norm(scale=noise_std)
         
         # 制御指令バイアス    
-        self.bias_rate_nu = norm.rvs(loc=1.0, scale=bias_rate_stds[0])    # 速度バイアス
-        self.bias_rate_omega = norm.rvs(loc=1.0, scale=bias_rate_stds[1]) # 角速度バイアス
-        
+        self.bias_rate_nu: float = norm.rvs(loc=1.0, scale=bias_rate_stds[0])    # 速度バイアス
+        self.bias_rate_omega: float = norm.rvs(loc=1.0, scale=bias_rate_stds[1]) # 角速度バイアス
 
+        self.expected_stuck_time: Optional[float] = expected_stuck_time
+        self.expected_escape_time: Optional[float] = expected_escape_time
+        self.expected_kidnap_time: Optional[float] = expected_kidnap_time
+        
         # ロボットのスタック
-        self.stuck_pdf = expon(scale=expected_stuck_time)
-        self.escape_pdf = expon(scale=expected_escape_time)
-        self.time_until_stuck = self.stuck_pdf.rvs()
-        self.time_until_escape = self.escape_pdf.rvs()
-        self.is_stuck = False
+        self.stuck_pdf = None
+        self.escape_pdf = None
+        self.time_until_stuck: Optional[float] = None
+        self.time_until_escape: Optional[float] = None
+        self.is_stuck: Optional[bool] = None
+        if expected_stuck_time is not None \
+            and expected_escape_time is not None:
+            self.stuck_pdf = expon(scale=expected_stuck_time) # 指数確率密度関数
+            self.escape_pdf = expon(scale=expected_escape_time) # 指数確率密度関数
+            self.time_until_stuck = self.stuck_pdf.rvs()
+            self.time_until_escape = self.escape_pdf.rvs()
+            self.is_stuck = False
         
-
         # 誘拐
-        self.is_robot_kidnap = True
-        self.kidnap_pdf = expon(scale=expected_kidnap_time)
-        self.time_until_kidnap = self.kidnap_pdf.rvs()
-        rx, ry = kidnap_range_x, kidnap_range_y
-        self.kidnap_dist = uniform(loc=(rx[0],ry[0],0.0), scale=(rx[1]-rx[0], ry[1]-ry[0], 2*math.pi))
+        self.expected_kidnap_time: Optional[float] = None
+        if expected_kidnap_time is not None \
+        and kidnap_range_x is not None and kidnap_range_y is not None:
+            self.is_robot_kidnap = True
+            self.kidnap_pdf = expon(scale=expected_kidnap_time)
+            self.time_until_kidnap = self.kidnap_pdf.rvs()
+            rx, ry = kidnap_range_x, kidnap_range_y
+            self.kidnap_dist = uniform(loc=(rx[0],ry[0],0.0), scale=(rx[1]-rx[0], ry[1]-ry[0], 2*math.pi))
         
-
-
     def noise(self, pose, nu, omega, time_interval):
         self.distance_until_noise -= abs(nu)*time_interval + self.r*abs(omega)*time_interval # -1*(直進成分 + 回転成分)
         if self.distance_until_noise <= 0.0:
@@ -166,9 +180,7 @@ class Robot(IdealRobot):
 
     # override 
     def one_step(self, time_interval):
-
-        if not self.agent: 
-            return
+        if not self.agent: return
         
         # 観測
         obs = self.sensor.data(self.pose) if self.sensor else None
@@ -180,7 +192,8 @@ class Robot(IdealRobot):
         nu, omega = self.bias(nu, omega) 
 
         # スタック
-        nu, omega = self.stuck(nu, omega, time_interval) 
+        if self.expected_stuck_time is not None:
+            nu, omega = self.stuck(nu, omega, time_interval) 
 
         # 更新(理想)
         self.pose = self.state_transition(nu, omega, time_interval, self.pose)
@@ -189,8 +202,9 @@ class Robot(IdealRobot):
         self.pose = self.noise(self.pose, nu, omega, time_interval) 
 
         # 誘拐
-        self.pose = self.kidnap(self.pose, time_interval) 
-        if self.sensor: self.sensor.data(self.pose)
+        if self.expected_kidnap_time is not None:
+            self.pose = self.kidnap(self.pose, time_interval) 
+            if self.sensor: self.sensor.data(self.pose)
 
 
 
