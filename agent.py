@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import math
+import random
 import itertools
 from abc import ABC, ABCMeta, abstractmethod
 from typing import Dict, List, Tuple, Set, Optional, Union, override
@@ -411,15 +412,23 @@ class QAgent(DpPolicyAgent):
 
 
 class StateInfo:
-    def __init__(self, action_num: int):
+    def __init__(self, action_num: int, epsilon: float = 0.3):
         self.q = np.zeros(action_num) # 0軸: 状態, 1軸: 行動
+        self.epsilon: float = epsilon
 
     def greedy(self):
         return np.argmax(self.q)
 
+    def epsilon_greedy(self, epsilon: float):
+        if random.random() < epsilon:
+            return random.choice(range(len(self.q)))
+        else:
+            return self.greedy()
+
     def pi(self):
-        """グリーディー化した方策 π(a|s)"""
-        return self.greedy()
+        """ε-グリーディ化した方策 π(a|s)"""
+        return self.epsilon_greedy(self.epsilon)
+
 
     
 
