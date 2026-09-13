@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import math
 import matplotlib.patches as patches
 import matplotlib.animation as anm
+from typing import override
 
 from obstacle import Puddle
 from robot import Robot
@@ -73,7 +74,7 @@ class PuddleWorld(World):
         self.robots = []
         self.goals = []
 
-    # override
+    @override
     def append(self, obj):
         self.objects.append(obj)
         if isinstance(obj, Puddle): self.puddles.append(obj)
@@ -83,7 +84,7 @@ class PuddleWorld(World):
     def puddle_depth(self, pose):
         return sum([p.depth * p.inside(pose) for p in self.puddles])
 
-    # override
+    @override
     def one_step(self, i, elems, ax):
         super().one_step(i, elems, ax)
         for r in self.robots:

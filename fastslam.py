@@ -5,6 +5,7 @@ Monte Carlo Localization (MCL)を用いた
 import copy
 import numpy as np
 import math
+from typing import override
 
 from mcl import Mcl
 from particles import MapParticle
@@ -35,7 +36,7 @@ class FastSlam1(Mcl):
         super().draw(ax, elems)
         self.ml.map.draw(ax, elems)
 
-    # override
+    @override
     def observation_update(self, observation):
         for p in self.particles:
             p.observation_update(observation,
@@ -76,7 +77,7 @@ class FastSlam2(Mcl):
 
         self.motion_noise_stds = motion_noise_stds
 
-    # override
+    @override
     def motion_update(self, nu, omega, time, observation):
         # FastSlam2では状態方程式にセンサ値の情報を加えて更新
 

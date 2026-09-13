@@ -1,6 +1,6 @@
 
 import math
-from typing import Dict, Set, List, Tuple, Union, Optional
+from typing import Dict, Set, List, Tuple, Union, Optional, override
 import numpy as np
 from scipy.stats import expon, norm, uniform
 import matplotlib.pyplot as plt
@@ -178,7 +178,7 @@ class Robot(IdealRobot):
         else:
             return pose
 
-    # override 
+    @override
     def one_step(self, time_interval):
         if not self.agent: return
         

@@ -3,6 +3,7 @@ import math
 import copy
 import random
 import numpy as np
+from typing import override
 from scipy.stats import multivariate_normal
 
 from robot import IdealRobot
@@ -79,7 +80,7 @@ class MapParticle(Particle):
         Q = matQ(distance_dev_rate * z[0], direction_dev) # 線形化
         landmark.cov = np.linalg.inv(H.T @ np.linalg.inv(Q) @ H) # ∑ = (H^T Q^-1 H)^-1
 
-    # override
+    @override
     def observation_update(self, observation, distance_dev_rate, direction_dev):
         for d in observation:
             z = d[0]
