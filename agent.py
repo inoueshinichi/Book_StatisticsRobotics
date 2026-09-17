@@ -326,6 +326,7 @@ class QAgent(DpPolicyAgent):
                  time_interval: float,
                  estimator: Estimator,
                  goal: Optional[Goal] = None,
+                 alpha: float = 0.5,
                  puddle_coef: float = 100,
                  widths: np.ndarray = np.array([0.2,0.2,math.pi/18]).T,
                  lowerleft: np.ndarray = np.array([-4,-4]).T,
@@ -352,15 +353,22 @@ class QAgent(DpPolicyAgent):
         self.indexes = list(itertools.product(range(nx),range(ny),range(nt)))
 
         # 離散状態の一つに対応する行動
-        self.actions = list(set([tuple(self.policy_data[i]) for i in self.indexes]))
+        self.actions: list[tuple[int,int]] = list(set([tuple(self.policy_data[i]) for i in self.indexes]))
 
         self.policy_filename: str | None = policy_filename
-        self.valud_filename: str | None = value_filename
+        self.value_filename: str | None = value_filename
+
+        if self.value_filename is None:
+            self.value_filename = 'dp_value.txt'
 
         # 初期値の状態行動対(s,a)と行動価値Qの読み込み
-        if value_filename:
-            self.ss = self.set_action_value_function(value_filename)
+        self.ss = self.set_action_value_function(self.value_filename)
 
+        # 強化学習用変数
+        self.alpha: float = alpha
+        self.s: tuple[int,int,int] | None = None
+        self.a: list[int,int] | None = None
+        self.update_end: bool = False
 
     def set_action_value_function(self, value_filename: str):
         ss = {} # State Space { (0,1,2): StateInfo, .... }
@@ -380,8 +388,8 @@ class QAgent(DpPolicyAgent):
                 sx = int(items[0].split(':')[-1]) # 状態(X軸)
                 sy = int(items[1].split(':')[-1]) # 状態(Y軸)
                 st = int(items[2].split(':')[-1]) # 状態(Z軸)
-                V = float(items[3].split(':')[-1])  # 状態価値
-                index, value = (sx,sy,st), V
+                Q = float(items[3].split(':')[-1])  # 行動価値
+                index, value = (sx,sy,st), Q
 
                 # StateInfoオブジェクトを割り当てて初期化
                 ss[index] = StateInfo(len(self.actions))
@@ -396,21 +404,73 @@ class QAgent(DpPolicyAgent):
 
     @override
     def policy(self, pose: np.ndarray, goal=Optional[Goal]):
-        # 状態行動対(s,a)に行動価値Qを割り当てていない場合, 固定の方策を実行
-        if self.valud_filename is None:
-            return super().policy(pose, goal)
-
         # 連続な状態変数から特定の離散状態を特定する
-        index = self.to_index(pose, self.pose_min, 
-                              self.index_nums, self.widths)
-
+        index = self.to_index(pose, 
+                              self.pose_min, 
+                              self.index_nums, 
+                              self.widths)
+        s = tuple(index)
+                   
         # 行動価値関数を使って行動決定
         a = self.ss[tuple(index)].pi()
-        return self.actions[a]
+        a = int(a) # np.float64 -> int
+
+        # return self.actions[a]
+        # print(f"a: {a}")
+
+        # 戻り値を変更
+        # s:(int,int,int), a:int
+        return s, a
+
+    @override
+    def decision(self, observation: Optional[np.ndarray] = None) -> Tuple[float,float]:
+        # 終了処理
+        if self.update_end: return 0.0, 0.0
+        if self.in_goal: self.update_end = True
+
+        # カルマンフィルタによる自己位置推定
+        self.estimator.motion_update(self.prev_nu, self.prev_omega, self.time_interval)
+        self.estimator.observation_update(observation)
+
+        # 行動決定と報酬の処理
+
+        # KFの結果から前回の状態遷移後の状態s_(s')と次の行動a_(a')（max_a'のa'ではないことに注意）を得る
+        s_, a_ = self.policy(self.estimator.pose)
+
+        # 状態遷移の報酬
+        r = self.time_interval * self.reward_per_sec()
+        self.total_reward += r
+
+        # Q学習と現在の状態と行動を保存
+        # self.s, self.aがQ値更新対象の状態行動対。
+        # 報酬rと次の状態s_を使って更新。
+        self.q_update(self.s, self.a, r, s_)
+        self.s, self.a = s_, a_
+
+        print(f"a_: {a_}")
+        print(f"self.actions[a_]: {self.actions[a_]}")
+
+        # 出力
+        self.prev_nu, self.prev_omega = self.actions[a_]
+        return self.actions[a_]
+
+
+    def q_update(self, s: tuple[int,int,int], a: int, 
+                 r: float, s_: tuple[int,int,int]):
+        if s == None: return
+
+        q = self.ss[s].q[a]
+        q_ = self.final_value if self.in_goal else self.ss[s_].max_q()
+        self.ss[s].q[a] = (1.0 - self.alpha) * q + self.alpha * (r + q_)
+
+        o_s = (s[0].item(),s[1].item(),s[2].item())
+        o_r = float(r)
+        o_s_ = (s_[0].item(),s_[1].item(),s_[2].item())
+
+        # with open("log.txt", mode='a') as f:
+        #     f.write(f"{o_s} {o_r} {o_s_} prev_q:{q:.2f}, next_step_max_q:{q_:.2f}, new_q:{self.ss[s].q[a]:.2f}\n")
 
         
-
-
 class StateInfo:
     def __init__(self, action_num: int, epsilon: float = 0.3):
         self.q = np.zeros(action_num) # 0軸: 状態, 1軸: 行動
@@ -427,9 +487,157 @@ class StateInfo:
 
     def pi(self):
         """ε-グリーディ化した方策 π(a|s)"""
-        return self.epsilon_greedy(self.epsilon)
+        ret = int(self.epsilon_greedy(self.epsilon))
+        print(f"pi ret: {ret}")
+        return ret
+
+    def max_q(self):
+        return int(max(self.q))
 
 
+
+class SarsaAgent(DpPolicyAgent):
+    def __init__(self,
+                 time_interval: float,
+                 estimator: Estimator,
+                 goal: Optional[Goal] = None,
+                 alpha: float = 0.5,
+                 puddle_coef: float = 100,
+                 widths: np.ndarray = np.array([0.2,0.2,math.pi/18]).T,
+                 lowerleft: np.ndarray = np.array([-4,-4]).T,
+                 upperright: np.ndarray = np.array([4,4]).T,
+                 dev_borders: list[int] = [0.1, 0.2, 0.4, 0.8],
+                 policy_filename: Optional[str] = None,
+                 value_filename: Optional[str] = None,
+                 disable_init_policy: bool = False,
+    ):
+        
+        # 環境の離散状態 s ∈ S
+        # 連続の状態空間をwidths=np.array([0.2,0.2,math.pi/180]).T
+        # で分割したインデックス集合
+        nx,ny,nt = self.index_nums # 状態空間の各軸の分割数 (X軸,Y軸,回転軸)
+        self.indexes = list(itertools.product(range(nx),range(ny),range(nt)))
+
+        # 離散状態の一つに対応する行動
+        self.actions: list[tuple[int,int]] = list(set([tuple(self.policy_data[i]) for i in self.indexes]))
+
+        self.policy_filename: str | None = policy_filename
+        self.value_filename: str | None = value_filename
+
+        if self.value_filename is None:
+            self.value_filename = 'dp_value.txt'
+
+        # 初期値の状態行動対(s,a)と行動価値Qの読み込み
+        self.ss = self.set_action_value_function(self.value_filename)
     
+    
+        # 強化学習用変数
+        self.alpha: float = alpha
+        self.s: tuple[int,int,int] | None = None
+        self.a: list[int,int] | None = None
+        self.update_end: bool = False
+
+    def set_action_value_function(self, value_filename: str):
+        ss = {} # State Space { (0,1,2): StateInfo, .... }
+
+        with open(value_filename, mode='r') as f:
+            """ファイルの形式
+            ....
+            sx:0 sy:0 st:5 V:-1.5331009792117058
+            sx:0 sy:0 st:6 V:-1.6080748791905841
+            sx:0 sy:0 st:7 V:-1.6930800991948085
+            sx:0 sy:0 st:8 V:-1.7760790551939638
+            ....
+            
+            """
+            for line in f.readlines():
+                items = line.split()
+                sx = int(items[0].split(':')[-1]) # 状態(X軸)
+                sy = int(items[1].split(':')[-1]) # 状態(Y軸)
+                st = int(items[2].split(':')[-1]) # 状態(Z軸)
+                Q = float(items[3].split(':')[-1])  # 行動価値
+                index, value = (sx,sy,st), Q
+
+                # StateInfoオブジェクトを割り当てて初期化
+                ss[index] = StateInfo(len(self.actions))
+
+                # 行動価値の初期化
+                for i, a in enumerate(self.actions):
+                    # 方策と一致しない場合は, ファイルの行動価値の値から少し引く.
+                    ss[index].q[i] = (value if 
+                                        tuple(self.policy_data[index]) == a 
+                                        else value - 0.1)
+        return ss
+
+    @override
+    def policy(self, pose: np.ndarray, goal=Optional[Goal]):
+        # 連続な状態変数から特定の離散状態を特定する
+        index = self.to_index(pose, 
+                                self.pose_min, 
+                                self.index_nums, 
+                                self.widths)
+        s = tuple(index)
+                    
+        # 行動価値関数を使って行動決定
+        a = self.ss[tuple(index)].pi()
+        a = int(a) # np.float64 -> int
+
+        # return self.actions[a]
+        # print(f"a: {a}")
+
+        # 戻り値を変更
+        # s:(int,int,int), a:int
+        return s, a
+
+    @override
+    def decision(self, observation: Optional[np.ndarray] = None) -> Tuple[float,float]:
+        # 終了処理
+        if self.update_end: return 0.0, 0.0
+        if self.in_goal: self.update_end = True
+
+        # カルマンフィルタによる自己位置推定
+        self.estimator.motion_update(self.prev_nu, self.prev_omega, self.time_interval)
+        self.estimator.observation_update(observation)
+
+        # 行動決定と報酬の処理
+
+        # KFの結果から前回の状態遷移後の状態s_(s')と次の行動a_(a')（max_a'のa'ではないことに注意）を得る
+        s_, a_ = self.policy(self.estimator.pose)
+
+        # 状態遷移の報酬
+        r = self.time_interval * self.reward_per_sec()
+        self.total_reward += r
+
+        # Q学習と現在の状態と行動を保存
+        # self.s, self.aがQ値更新対象の状態行動対。
+        # 報酬rと次の状態s_を使って更新。
+        self.q_update(self.s, self.a, r, s_, a_) # a_も引数に加える
+        self.s, self.a = s_, a_
+
+        print(f"a_: {a_}")
+        print(f"self.actions[a_]: {self.actions[a_]}")
+
+        # 出力
+        self.prev_nu, self.prev_omega = self.actions[a_]
+        return self.actions[a_]
+
+    def q_update(self, 
+                 s: tuple[int,int,int], 
+                 a: int, 
+                 r: float, 
+                 s_: tuple[int,int,int],
+                 a_: int):
+        if s == None: return
+
+        q = self.ss[s].q[a]
+        q_ = self.final_value if self.in_goal else self.ss[s_].q[a_] # max_qからQ(s_,a_)に書き換え
+        self.ss[s].q[a] = (1.0 - self.alpha) * q + self.alpha * (r + q_)
+
+        o_s = (s[0].item(),s[1].item(),s[2].item())
+        o_r = float(r)
+        o_s_ = (s_[0].item(),s_[1].item(),s_[2].item())
+
+        # with open("log.txt", mode='a') as f:
+        #     f.write(f"{o_s} {o_r} {o_s_} prev_q:{q:.2f}, next_step_max_q:{q_:.2f}, new_q:{self.ss[s].q[a]:.2f}\n")
 
     

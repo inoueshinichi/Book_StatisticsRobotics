@@ -1,8 +1,10 @@
 
 import math
+import copy
+import random
 from typing import Dict, Set, List, Tuple, Union, Optional, override
 import numpy as np
-from scipy.stats import expon, norm, uniform
+from scipy.stats import expon, norm, uniform, multivariate_normal
 import matplotlib.pyplot as plt
 
 import matplotlib.patches as patches
@@ -208,3 +210,35 @@ class Robot(IdealRobot):
 
 
 
+class WarpRobot(Robot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.init_agent = copy.deepcopy(self.agent)
+
+    def choose_pose(self):
+        xy = random.random() * 6 - 2
+        t = random.random() * 2 * math.pi
+        return np.array([3, xy, t]).T if random.random() > 0.5 else np.array([xy, 3, t]).T
+
+    def reset(self):
+        # ssだけ残してエージェントを初期化
+        tmp = self.agent.ss
+        self.agent = copy.deepcopy(self.init_agent)
+        self.agent.ss = tmp
+
+        # 初期位置をセット(ロボット、カルマンフィルタ)
+        self.pose = self.choose_pose()
+        self.agent.estimator.belief = multivariate_normal(mean=self.pose, cov=np.diag([1e-10,1e-10,1e-10]))
+
+        # 軌跡の黒い線が残らないように消す
+        self.poses = []
+
+    def one_step(self, time_interval):
+        if self.agent.update_end:
+            with open('log.txt', 'a') as f:
+                f.write("{}\n".format(self.agent.total_reward + self.agent.final_value))
+            self.reset()
+            return
+
+        super().one_step(time_interval)

@@ -51,6 +51,7 @@ class KalmanFilterEstimator(Estimator):
             direction_dev=direction_dev,
         )
 
+
     def motion_update(self, nu: float, omega: float, deltatime: float):
         self.kf.motion_update(nu, omega, deltatime)
 
@@ -63,6 +64,14 @@ class KalmanFilterEstimator(Estimator):
     @property
     def pose(self) -> np.ndarray:
         return self.kf.pose
+
+    @property
+    def belief(self):
+        return self.kf.belief
+
+    @belief.setter
+    def belief(self, value):
+        self.kf.belief = value
 
 
 class GlobalKalmanFilterEstimator(Estimator):
@@ -98,6 +107,14 @@ class GlobalKalmanFilterEstimator(Estimator):
     def pose(self) -> np.ndarray:
         return self.gkf.pose
 
+    @property
+    def belief(self):
+        return self.kf.belief
+
+    @belief.setter
+    def belief(self, value):
+        self.kf.belief = value
+
 
 class MclParticleFilterEstimator(Estimator):
     def __init__(self,
@@ -124,7 +141,7 @@ class MclParticleFilterEstimator(Estimator):
         )
 
     def motion_update(self, nu: float, omega: float, deltatime: float):
-            self.mcl.motion_update(nu, omega, deltatime)
+        self.mcl.motion_update(nu, omega, deltatime)
     
     def observation_update(self, observation):
         self.mcl.observation_update(observation)
